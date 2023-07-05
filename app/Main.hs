@@ -21,7 +21,7 @@ import Network.Socket.ByteString (recv, sendAll)
 import Parameters
 import System.Console.ANSI (clearScreen, setCursorPosition)
 import System.IO (BufferMode (LineBuffering, NoBuffering), hReady, hSetBuffering, hSetEcho, stdin)
-import System.Random (StdGen, mkStdGen, randomR)
+import System.Random (StdGen, mkStdGen, randomR, Random (random))
 import System.Timeout (timeout)
 
 data PingGameT a = Game
@@ -48,9 +48,11 @@ castPingGame g = Game (cast $ ballPos g) (cast $ ballVel g) (cast $ playersPos g
     cast (x, y) = (round x, round y)
 
 genRandVel :: StdGen -> ((Float, Float), StdGen)
-genRandVel rng = ((x, y), rng')
+genRandVel rng = ((x, y), rng'')
   where
-    (angle, rng') = randomR (0, 2 * pi) rng
+    (_angle, rng') = randomR (- pi / 4, pi / 4) rng
+    (modify :: Bool, rng'') = random rng'
+    angle = if modify then _angle + pi else _angle
     x = cos angle * ballVelocity
     y = sin angle * ballVelocity
 
@@ -118,7 +120,7 @@ updateGameState g p1 p2 rng =
     gaming g p1 p2 rng = do
       let playersPos' = (cropY $ fst (playersPos g) + move2vel p1, cropY $ snd (playersPos g) + move2vel p2)
       let ballPos' = ballPos g `add` ballVel g
-      case scoresPoints ballPos' playersPos' of
+      case scoresPoints (roundBoth ballPos') (roundBoth playersPos') of
         Just (p1', p2') -> do
           let playersScores' = (fst (playersScores g) + p1', snd (playersScores g) + p2')
           let (g', rng') = initState rng
@@ -128,17 +130,18 @@ updateGameState g p1 p2 rng =
           return (Game (fixBallPos ballPos') ballVel' playersPos' (playersScores g) 0, rng)
 
     scoresPoints (ballX, ballY) (p1Y, p2Y)
-      | ballX <= 0 && not (p1Y - paddleRadiusF <= ballY && ballY < p1Y + paddleRadiusF) = Just (0, 1)
-      | ballX >= widthF - 1 && not (p2Y - paddleRadiusF <= ballY && ballY < p2Y + paddleRadiusF) = Just (1, 0)
+      | ballX <= 0 && not (p1Y - paddleRadius <= ballY && ballY < p1Y + paddleRadius) = Just (0, 1)
+      | ballX >= width - 1 && not (p2Y - paddleRadius <= ballY && ballY < p2Y + paddleRadius) = Just (1, 0)
       | otherwise = Nothing
 
     fixBallPos (ballX, ballY) = (max 1 $ min (widthF - 2) ballX, max 0 $ min (heightF - 1) ballY)
 
-    yVelChange (_, ballY) = if ballY <= -1 || ballY >= heightF then -1 else 1
-    xVelChange (ballX, _) = if ballX <= 0 || ballX >= widthF - 1 then -1 else 1
+    yVelChange (_, ballY) = if ballY < 0 || ballY > heightF then -1 else 1
+    xVelChange (ballX, _) = if ballX < 1 || ballX > widthF - 1 then -1 else 1
 
     cropY y = max 2 $ min (heightF - 2) y
     add (a, b) (c, d) = (a + c, b + d)
+    roundBoth (a, b) = (round a, round b)
 
 -- ** SERVER ** --
 
@@ -184,7 +187,7 @@ readingUser move sem = do
 
 waitFrame :: QSem -> IO Move
 waitFrame sem = do
-  threadDelay oneSecond
+  threadDelay frameTime
   signalQSem sem
   signalQSem sem
   return Still
@@ -215,7 +218,7 @@ clientGameLoop sock g move = do
 
 clientReadUser :: Socket -> MVar a -> MVar Move -> IO ()
 clientReadUser sock stop move = do
-  threadDelay 8333
+  threadDelay 833
   key <- readMVar move
   sendAll sock $ m2bs key
   inProgress <- isEmptyMVar stop

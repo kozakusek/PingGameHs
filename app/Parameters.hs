@@ -41,16 +41,16 @@ menu =
     ++ "\t0. Exit\n"
 
 fps :: Int
-fps = 60
+fps = 10
+
+frameTime :: Int
+frameTime = 100000 `div` fps
 
 pauseLen :: Int
-pauseLen = 2
+pauseLen = fps
 
 ballVelocity :: Float
-ballVelocity = 5
+ballVelocity = 2
 
 paddleVelocity :: Float
-paddleVelocity = 3
-
-oneSecond :: Int
-oneSecond = 90000
+paddleVelocity = 1.3
